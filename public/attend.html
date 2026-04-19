@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mark Attendance</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container" style="max-width: 500px;">
+        <header>
+            <h1>Class Attendance</h1>
+            <p style="color: var(--text-dim)">Please enter your details to sign in</p>
+        </header>
+
+        <main class="card">
+            <div id="message" class="message"></div>
+
+            <div id="formSection">
+                <div class="input-group">
+                    <label for="fullName" style="display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 0.9rem;">Full Name</label>
+                    <input type="text" id="fullName" placeholder="e.g. John Doe" style="margin-bottom: 20px;" autofocus>
+                    
+                    <label for="matricNumber" style="display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 0.9rem;">Matriculation Number</label>
+                    <input type="text" id="matricNumber" placeholder="e.g. CME/20/1234">
+                </div>
+
+                <div style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-bottom: 24px; font-size: 0.8rem; color: var(--text-dim); text-align: center;">
+                    <span style="color: var(--primary);">Note:</span> Your department will be automatically detected.
+                </div>
+
+                <button id="submitBtn" class="btn-primary" style="width: 100%; padding: 16px;">Sign In</button>
+            </div>
+
+            <div id="successSection" style="display: none; text-align: center;">
+                <div style="font-size: 4rem; color: var(--accent); margin-bottom: 16px; animation: pulse-animation 2s infinite;">✓</div>
+                <h2 style="margin-bottom: 8px;" id="successName">Success!</h2>
+                <p style="color: var(--text-dim); margin-bottom: 8px;">Your attendance has been recorded.</p>
+                <div style="background: rgba(255,255,255,0.05); padding: 8px 16px; border-radius: 8px; display: inline-block; margin-bottom: 24px;">
+                    Department: <strong id="successDept" style="color: var(--primary);"></strong>
+                </div>
+                <br>
+                <button onclick="window.close()" class="btn-secondary">Close Tab</button>
+            </div>
+        </main>
+    </div>
+
+    <script src="student.js"></script>
+</body>
+</html>

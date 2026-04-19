@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>University Attendance System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Class Attendance Manager</h1>
+            <p style="color: var(--text-dim)">University Demo System</p>
+        </header>
+
+        <!-- Setup New Session Section -->
+        <section class="card" id="setupSection">
+            <h3 style="margin-bottom: 20px;">Create New Class Session</h3>
+            <div class="input-group">
+                <label for="className" style="display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 0.9rem;">Class Title (e.g. GET 222)</label>
+                <input type="text" id="className" placeholder="Enter Class Title" style="margin-bottom: 16px;">
+                
+                <label for="classLevel" style="display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 0.9rem;">Course Level (e.g. 200)</label>
+                <input type="text" id="classLevel" placeholder="Enter Level" style="margin-bottom: 24px;">
+                
+                <button id="startBtn" class="btn-primary" style="width: 100%;">Create & Start Session</button>
+            </div>
+            <div id="setupError" class="message error" style="display: none; margin-top: 16px;"></div>
+        </section>
+
+        <!-- Active Session Dashboard Section -->
+        <section class="card" id="activeSessionSection" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                <div>
+                    <h2 id="displayClassName" style="color: var(--primary); font-family: 'Outfit'; font-size: 2rem; font-weight: 700;">Class</h2>
+                    <p id="displayClassLevel" style="color: var(--text-dim); font-size: 1.1rem; margin-top: 4px;">Level</p>
+                </div>
+                <button id="endBtn" class="btn-danger">End Session</button>
+            </div>
+
+            <div id="qrArea" class="qr-container" style="display: block; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 16px;">
+                <div class="status-badge status-active" style="margin-bottom: 16px; display: inline-block;">Session in Progress</div>
+                <br>
+                <img id="qrImage" src="" alt="Session QR Code" style="background: white; padding: 12px; border-radius: 12px; max-width: 220px;">
+                <div style="margin-top: 16px;">
+                    <button id="copyBtn" class="btn-secondary" style="padding: 8px 16px; font-size: 0.85rem;">Copy Quick Link</button>
+                </div>
+            </div>
+
+            <div class="stats-grid" style="margin-top: 32px;">
+                <div class="stat-card" style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 16px;">
+                    <div class="stat-value pulse" id="studentCount">0</div>
+                    <div class="stat-label" style="margin-top: 8px;">Total Students Present</div>
+                </div>
+            </div>
+
+            <div id="deptBreakdown" style="margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--glass-border);">
+                <h4 style="margin-bottom: 16px; color: var(--text-dim); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Attendance by Department</h4>
+                <div id="deptList" style="display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+                    <!-- Department breakdown injected here -->
+                    <div style="color: var(--text-dim); font-size: 0.9rem; font-style: italic;">Awaiting students...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Log List Section -->
+        <section class="card student-list" id="logSection" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="font-family: 'Outfit', sans-serif;">Live Attendance Log</h3>
+                <span id="lastUpdate" style="font-size: 0.75rem; color: var(--text-dim); background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 20px;">Live</span>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Student Info</th>
+                        <th style="width: 35%;">Department</th>
+                        <th style="width: 25%;">Check-in Time</th>
+                    </tr>
+                </thead>
+                <tbody id="studentTableBody">
+                    <!-- Students will be listed here -->
+                </tbody>
+            </table>
+        </section>
+
+    </div>
+
+    <!-- History Retrieval Section -->
+    <div class="container" style="margin-top: 40px; border-top: 1px solid var(--glass-border); padding-top: 40px;">
+        <h2 style="font-family: 'Outfit', sans-serif; color: var(--primary); margin-bottom: 24px;">Past Classes & Reports</h2>
+        
+        <!-- Class List -->
+        <section class="card" id="historyClassesSection">
+            <h3 style="margin-bottom: 16px;">Select a Class</h3>
+            <div id="historyClassesList" style="display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                <!-- Classes injected here -->
+            </div>
+        </section>
+
+        <!-- Sessions List -->
+        <section class="card" id="historySessionsSection" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 id="historySessionsClassTitle">Sessions</h3>
+                <button id="backToClassesBtn" class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;">Back</button>
+            </div>
+            <div id="historySessionsList" style="display: grid; gap: 12px;">
+                <!-- Sessions injected here -->
+            </div>
+            <div style="margin-top: 24px;">
+                <button id="viewGradesBtn" class="btn-primary" style="width: 100%;">View Final Grades for this Class</button>
+            </div>
+        </section>
+
+        <!-- Detail List (Attendance / Grades) -->
+        <section class="card student-list" id="historyDetailSection" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h3 id="historyDetailTitle">Records</h3>
+                <button id="backToSessionsBtn" class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;">Back</button>
+            </div>
+            <table>
+                <thead id="historyDetailHead">
+                    <!-- Headers injected here -->
+                </thead>
+                <tbody id="historyDetailBody">
+                    <!-- Data injected here -->
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+
+    <script src="lecturer.js"></script>
+</body>
+</html>
