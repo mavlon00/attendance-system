@@ -1,14 +1,16 @@
 {
   "name": "attendance-marker",
   "version": "1.0.0",
-  "description": "QR Attendance System",
+  "description": "Deployment Safe Attendance System",
   "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^4.18.2",
     "morgan": "^1.10.0",
     "qrcode": "^1.5.3",
-    "sqlite3": "^6.0.1",
     "uuid": "^9.0.0"
   }
 }

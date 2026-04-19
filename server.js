@@ -4,17 +4,22 @@ const { v4: uuidv4 } = require('uuid');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
-const db = require('./database');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Helper to determine department from matric correctly (embedded)
+// --- In-Memory Data Storage ---
+let classes = [];     // { id, class_name, level, created_at }
+let sessions = [];    // { id, class_id, class_name, level, status, created_at }
+let attendance = [];  // { id, session_id, class_id, name, matric_number, department, timestamp }
+let attendanceIdCounter = 1;
+
+// Helper to determine department from matric correctly (embedded format)
 function getDepartment(matricNo) {
     if (!matricNo) return 'Other';
     const normalized = matricNo.toUpperCase().replace(/\s+/g, '');
@@ -27,7 +32,6 @@ function getDepartment(matricNo) {
     
     const deptCode = match[1];
     
-    // Clean mapping object
     const deptMap = {
         'CME': 'Computer Engineering',
         'CHE': 'Chemical Engineering',
@@ -37,6 +41,8 @@ function getDepartment(matricNo) {
     return deptMap[deptCode] || 'Other';
 }
 
+// --- API Endpoints ---
+
 // Start a new session
 app.post('/api/sessions/start', async (req, res) => {
     const { className, level } = req.body;
@@ -45,25 +51,41 @@ app.post('/api/sessions/start', async (req, res) => {
     }
 
     try {
-        await db.run("UPDATE sessions SET status = 'closed' WHERE status = 'active'");
+        // Close existing active sessions
+        sessions.forEach(s => {
+            if (s.status === 'active') s.status = 'closed';
+        });
         
-        let classRecord = await db.get("SELECT id FROM classes WHERE class_name = ? AND level = ?", [className, level]);
+        let classRecord = classes.find(c => c.class_name === className && c.level === level);
         let classId;
 
         if (classRecord) {
             classId = classRecord.id;
         } else {
             classId = uuidv4();
-            await db.run("INSERT INTO classes (id, class_name, level) VALUES (?, ?, ?)", [classId, className, level]);
+            classes.push({
+                id: classId,
+                class_name: className,
+                level: level,
+                created_at: new Date().toISOString()
+            });
         }
         
         const sessionId = uuidv4();
-        await db.run(
-            "INSERT INTO sessions (id, class_id, class_name, level, status) VALUES (?, ?, ?, ?, 'active')", 
-            [sessionId, classId, className, level]
-        );
+        sessions.push({
+            id: sessionId,
+            class_id: classId,
+            class_name: className,
+            level: level,
+            status: 'active',
+            created_at: new Date().toISOString()
+        });
         
-        const qrUrl = `http://localhost:${PORT}/attend.html?token=${sessionId}`;
+        // Base URL dynamically adapted to Render protocol or localhost
+        const host = req.get('host');
+        const protocol = req.protocol; 
+        const qrUrl = `${protocol}://${host}/attend.html?token=${sessionId}`;
+        
         const qrDataUrl = await qrcode.toDataURL(qrUrl);
         
         res.json({ success: true, sessionId, qrDataUrl, className, level });
@@ -73,23 +95,23 @@ app.post('/api/sessions/start', async (req, res) => {
 });
 
 // End current session
-app.post('/api/sessions/end', async (req, res) => {
-    try {
-        await db.run("UPDATE sessions SET status = 'closed' WHERE status = 'active'");
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+app.post('/api/sessions/end', (req, res) => {
+    sessions.forEach(s => {
+        if (s.status === 'active') s.status = 'closed';
+    });
+    res.json({ success: true });
 });
 
 // Get active session
 app.get('/api/sessions/active', async (req, res) => {
     try {
-        const session = await db.get("SELECT * FROM sessions WHERE status = 'active' ORDER BY created_at DESC LIMIT 1");
-        if (session) {
-            const qrUrl = `http://localhost:${PORT}/attend.html?token=${session.id}`;
+        const activeSession = sessions.find(s => s.status === 'active');
+        if (activeSession) {
+            const host = req.get('host');
+            const protocol = req.protocol;
+            const qrUrl = `${protocol}://${host}/attend.html?token=${activeSession.id}`;
             const qrDataUrl = await qrcode.toDataURL(qrUrl);
-            res.json({ session, qrDataUrl });
+            res.json({ session: activeSession, qrDataUrl });
         } else {
             res.json({ session: null });
         }
@@ -99,140 +121,129 @@ app.get('/api/sessions/active', async (req, res) => {
 });
 
 // Submit attendance
-app.post('/api/attendance', async (req, res) => {
+app.post('/api/attendance', (req, res) => {
     const { name, matricNumber, token } = req.body;
     
     if (!name || !matricNumber || !token) {
         return res.status(400).json({ error: 'Name, matric number, and token are required' });
     }
 
-    try {
-        const session = await db.get("SELECT * FROM sessions WHERE id = ? AND status = 'active'", [token]);
-        if (!session) {
-            return res.status(400).json({ error: 'Invalid or inactive session' });
-        }
-
-        const existing = await db.get("SELECT * FROM attendance WHERE session_id = ? AND matric_number = ?", [token, matricNumber]);
-        if (existing) {
-            return res.status(400).json({ error: 'Attendance already submitted for this session by this matric number' });
-        }
-
-        const department = getDepartment(matricNumber);
-
-        await db.run(
-            "INSERT INTO attendance (session_id, class_id, name, matric_number, department) VALUES (?, ?, ?, ?, ?)", 
-            [token, session.class_id, name, matricNumber, department]
-        );
-        res.json({ success: true, name, department });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    const session = sessions.find(s => s.id === token && s.status === 'active');
+    if (!session) {
+        return res.status(400).json({ error: 'Invalid or inactive session' });
     }
+
+    const existing = attendance.find(a => a.session_id === token && a.matric_number === matricNumber);
+    if (existing) {
+        return res.status(400).json({ error: 'Attendance already submitted for this session by this matric number' });
+    }
+
+    const department = getDepartment(matricNumber);
+
+    attendance.push({
+        id: attendanceIdCounter++,
+        session_id: token,
+        class_id: session.class_id,
+        name: name,
+        matric_number: matricNumber,
+        department: department,
+        timestamp: new Date().toISOString()
+    });
+
+    res.json({ success: true, name, department });
 });
 
 // Get dashboard summary for active session
-app.get('/api/dashboard/:sessionId', async (req, res) => {
-    try {
-        const sessionId = req.params.sessionId;
+app.get('/api/dashboard/:sessionId', (req, res) => {
+    const sessionId = req.params.sessionId;
+    
+    const sessionAttendance = attendance.filter(a => a.session_id === sessionId);
+    
+    const count = sessionAttendance.length;
+    
+    // Group by department
+    const deptMap = {};
+    sessionAttendance.forEach(a => {
+        deptMap[a.department] = (deptMap[a.department] || 0) + 1;
+    });
+    
+    const departments = Object.keys(deptMap).map(k => ({
+        department: k,
+        count: deptMap[k]
+    })).sort((a, b) => b.count - a.count);
+
+    // Sort students desc by timestamp
+    const sortedStudents = [...sessionAttendance].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    res.json({ 
+        count: count, 
+        departments: departments, 
+        students: sortedStudents 
+    });
+});
+
+// Get all classes
+app.get('/api/classes', (req, res) => {
+    const sortedClasses = [...classes].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json({ classes: sortedClasses });
+});
+
+// Get sessions under a class
+app.get('/api/classes/:classId/sessions', (req, res) => {
+    const classSessions = sessions.filter(s => s.class_id === req.params.classId);
+    
+    const enhancedSessions = classSessions.map(s => {
+        const attendanceCount = attendance.filter(a => a.session_id === s.id).length;
+        return { ...s, attendance_count: attendanceCount };
+    }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    res.json({ sessions: enhancedSessions });
+});
+
+// Get attendance for a specific session (for retrieval)
+app.get('/api/sessions/:sessionId/attendance', (req, res) => {
+    const sessionAttendance = attendance
+        .filter(a => a.session_id === req.params.sessionId)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         
-        // Total count
-        const countRes = await db.get("SELECT COUNT(*) as count FROM attendance WHERE session_id = ?", [sessionId]);
-        
-        // Department breakdown
-        const depts = await db.all(`
-            SELECT department, COUNT(*) as count 
-            FROM attendance 
-            WHERE session_id = ? 
-            GROUP BY department
-            ORDER BY count DESC
-        `, [sessionId]);
-
-        // Student list
-        const students = await db.all(`
-            SELECT name, matric_number, department, timestamp 
-            FROM attendance 
-            WHERE session_id = ? 
-            ORDER BY timestamp DESC
-        `, [sessionId]);
-
-        res.json({ 
-            count: countRes.count, 
-            departments: depts, 
-            students 
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.json({ attendance: sessionAttendance });
 });
 
-// NEW: Get all classes
-app.get('/api/classes', async (req, res) => {
-    try {
-        const classes = await db.all("SELECT * FROM classes ORDER BY created_at DESC");
-        res.json({ classes });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+// Grading system endpoint
+app.get('/api/classes/:classId/grades', (req, res) => {
+    const classId = req.params.classId;
+    const maxMarks = parseFloat(req.query.max_marks) || 30;
 
-// NEW: Get sessions under a class
-app.get('/api/classes/:classId/sessions', async (req, res) => {
-    try {
-        const sessions = await db.all(`
-            SELECT s.*, COUNT(a.id) as attendance_count 
-            FROM sessions s 
-            LEFT JOIN attendance a ON s.id = a.session_id 
-            WHERE s.class_id = ? 
-            GROUP BY s.id 
-            ORDER BY s.created_at DESC
-        `, [req.params.classId]);
-        res.json({ sessions });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+    const classSessions = sessions.filter(s => s.class_id === classId);
+    const totalSessions = classSessions.length || 1; // Prevent division by zero
 
-// NEW: Get attendance for a specific session (for retrieval)
-app.get('/api/sessions/:sessionId/attendance', async (req, res) => {
-    try {
-        const attendance = await db.all(`
-            SELECT * FROM attendance WHERE session_id = ? ORDER BY timestamp DESC
-        `, [req.params.sessionId]);
-        res.json({ attendance });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
+    const classAttendance = attendance.filter(a => a.class_id === classId);
 
-// NEW: Grading system endpoint
-app.get('/api/classes/:classId/grades', async (req, res) => {
-    try {
-        const classId = req.params.classId;
-        const maxMarks = parseFloat(req.query.max_marks) || 30;
-
-        const totalSessionsResult = await db.get("SELECT COUNT(*) as count FROM sessions WHERE class_id = ?", [classId]);
-        const totalSessions = totalSessionsResult.count || 1; // Prevent division by zero
-
-        const attendanceData = await db.all(`
-            SELECT matric_number, name, department, COUNT(*) as sessions_attended 
-            FROM attendance 
-            WHERE class_id = ?
-            GROUP BY matric_number
-            ORDER BY name ASC
-        `, [classId]);
-
-        const grades = attendanceData.map(s => {
-            const score = totalSessions > 0 ? ((s.sessions_attended / totalSessions) * maxMarks) : 0;
-            return {
-                ...s,
-                score: score.toFixed(2),
-                totalSessions
+    // Group by matric_number
+    const studentMap = {};
+    classAttendance.forEach(a => {
+        if (!studentMap[a.matric_number]) {
+            studentMap[a.matric_number] = {
+                matric_number: a.matric_number,
+                name: a.name,
+                department: a.department,
+                sessions_attended: 0
             };
-        });
+        }
+        studentMap[a.matric_number].sessions_attended += 1;
+    });
 
-        res.json({ class_id: classId, totalSessions, maxMarks, grades });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    // Calculate scores
+    const grades = Object.values(studentMap).map(s => {
+        const score = totalSessions > 0 ? ((s.sessions_attended / totalSessions) * maxMarks) : 0;
+        return {
+            ...s,
+            score: score.toFixed(2),
+            totalSessions
+        };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    res.json({ class_id: classId, totalSessions, maxMarks, grades });
 });
 
 app.listen(PORT, () => {
