@@ -139,7 +139,7 @@ elements.endBtn.addEventListener('click', async () => {
 elements.copyBtn.addEventListener('click', () => {
     const sessionId = currentSessionId;
     if (!sessionId) return;
-    const url = `https://attendance-system-1-eusi.onrender.com/attend.html?token=${sessionId}`;
+    const url = `${window.location.origin}/session/${sessionId}`;
     navigator.clipboard.writeText(url).then(() => {
         const originalText = elements.copyBtn.innerText;
         elements.copyBtn.innerText = 'Copied!';

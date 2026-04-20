@@ -7,6 +7,7 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 app.use(cors());
 app.use(morgan('dev'));
@@ -81,8 +82,7 @@ app.post('/api/sessions/start', async (req, res) => {
             created_at: new Date().toISOString()
         });
         
-        const baseUrl = 'https://attendance-system-1-eusi.onrender.com';
-        const qrUrl = `${baseUrl}/attend.html?token=${sessionId}`;
+        const qrUrl = `${BASE_URL}/session/${sessionId}`;
         
         const qrDataUrl = await qrcode.toDataURL(qrUrl);
         
@@ -105,8 +105,7 @@ app.get('/api/sessions/active', async (req, res) => {
     try {
         const activeSession = sessions.find(s => s.status === 'active');
         if (activeSession) {
-            const baseUrl = 'https://attendance-system-1-eusi.onrender.com';
-            const qrUrl = `${baseUrl}/attend.html?token=${activeSession.id}`;
+            const qrUrl = `${BASE_URL}/session/${activeSession.id}`;
             const qrDataUrl = await qrcode.toDataURL(qrUrl);
             res.json({ session: activeSession, qrDataUrl });
         } else {
@@ -115,6 +114,11 @@ app.get('/api/sessions/active', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// Redirect /session/:sessionId to the attend.html UI
+app.get('/session/:sessionId', (req, res) => {
+    res.redirect(`/attend.html?token=${req.params.sessionId}`);
 });
 
 // Submit attendance
