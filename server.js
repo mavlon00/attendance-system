@@ -147,6 +147,14 @@ app.get('/api/sessions/active', async (req, res) => {
         if (activeSession) {
             const qrUrl = `${BASE_URL}/attend.html?token=${activeSession.id}`;
             const qrDataUrl = await qrcode.toDataURL(qrUrl);
+            
+            console.log('Active session:', {
+                sessionId: activeSession.id,
+                gpsEnabled: !!activeSession.lecturerGps,
+                lecturerGps: activeSession.lecturerGps,
+                gpsRadius: activeSession.gpsRadius
+            });
+            
             res.json({ 
                 session: activeSession, 
                 qrDataUrl,
@@ -164,6 +172,14 @@ app.get('/api/sessions/active', async (req, res) => {
 // Submit attendance with GPS and device validation
 app.post('/api/attendance', (req, res) => {
     const { name, matricNumber, token, studentGps, deviceId } = req.body;
+    
+    console.log('Attendance submission attempt:', {
+        name,
+        matricNumber,
+        token: token?.substring(0, 8) + '...',
+        studentGps: studentGps ? `${studentGps.latitude}, ${studentGps.longitude}` : null,
+        deviceId: deviceId?.substring(0, 10) + '...'
+    });
     
     if (!name || !matricNumber || !token) {
         return res.status(400).json({ error: 'Name, matric number, and token are required' });
@@ -191,11 +207,18 @@ app.post('/api/attendance', (req, res) => {
 
     // GPS validation (if session has GPS enabled)
     if (session.lecturerGps) {
+        console.log('GPS validation required. Session GPS:', session.lecturerGps, 'Radius:', session.gpsRadius);
+        
         if (!studentGps || !studentGps.latitude || !studentGps.longitude) {
+            console.log('✗ Student GPS missing:', studentGps);
             return res.status(403).json({ error: 'Location permission required' });
         }
         
+        console.log('Student GPS received:', studentGps);
+        
         const withinRadius = isWithinGpsRadius(studentGps, session.lecturerGps, session.gpsRadius);
+        console.log('GPS within radius?', withinRadius);
+        
         if (!withinRadius) {
             const distance = calculateDistance(
                 studentGps.latitude,
@@ -203,12 +226,14 @@ app.post('/api/attendance', (req, res) => {
                 session.lecturerGps.latitude,
                 session.lecturerGps.longitude
             );
+            console.log(`✗ Student outside radius: ${Math.round(distance)}m (radius: ${session.gpsRadius}m)`);
             return res.status(403).json({ 
                 error: 'You are not within the class location',
                 distance: Math.round(distance),
                 radius: session.gpsRadius
             });
         }
+        console.log('✓ GPS validation passed');
     }
 
     const department = getDepartment(matricNumber);
@@ -232,6 +257,7 @@ app.post('/api/attendance', (req, res) => {
     }
 
     attendance.push(record);
+    console.log('✓ Attendance recorded for:', name, matricNumber);
 
     res.json({ success: true, name, department });
 });

@@ -24,10 +24,14 @@ if (!deviceId) {
 
 let studentGps = null;
 let gpsPermissionDenied = false;
+let gpsAquired = false;
 
 // Request GPS on page load
 if (navigator.geolocation) {
     elements.gpsStatusDiv.style.display = 'block';
+    elements.gpsStatusIcon.innerText = '⏳';
+    elements.gpsStatusText.innerText = 'Acquiring location... (please wait)';
+    
     navigator.geolocation.getCurrentPosition(
         (position) => {
             studentGps = {
@@ -35,19 +39,35 @@ if (navigator.geolocation) {
                 longitude: position.coords.longitude,
                 accuracy: position.coords.accuracy
             };
-            elements.gpsStatusDiv.style.display = 'none';
+            gpsAquired = true;
+            elements.gpsStatusIcon.innerText = '✅';
+            elements.gpsStatusText.innerText = `Location acquired (${Math.round(position.coords.accuracy)}m accuracy)`;
+            elements.gpsStatusDiv.style.borderLeft = '3px solid #6ea8fe';
+            console.log('✓ GPS Acquired:', studentGps);
+            
+            // Auto-show success for 3 seconds then hide
+            setTimeout(() => {
+                elements.gpsStatusDiv.style.display = 'none';
+            }, 3000);
         },
         (error) => {
             gpsPermissionDenied = true;
-            elements.gpsStatusIcon.innerText = '⚠️';
-            elements.gpsStatusText.innerText = 'Location access denied. You can still sign in if location is optional.';
+            gpsAquired = false;
+            elements.gpsStatusIcon.innerText = '❌';
+            elements.gpsStatusText.innerText = 'Location access DENIED - You cannot sign in';
             elements.gpsStatusDiv.style.borderLeft = '3px solid var(--accent)';
-            console.warn('GPS Error:', error.message);
+            elements.submitBtn.disabled = true;
+            elements.submitBtn.style.opacity = '0.5';
+            elements.submitBtn.innerText = 'Location Required (Denied)';
+            console.error('✗ GPS Error:', error.code, error.message);
         },
-        { timeout: 10000, enableHighAccuracy: false }
+        { timeout: 15000, enableHighAccuracy: false, maximumAge: 0 }
     );
 } else {
     console.warn('Geolocation not supported');
+    elements.gpsStatusDiv.style.display = 'block';
+    elements.gpsStatusIcon.innerText = '⚠️';
+    elements.gpsStatusText.innerText = 'Geolocation not supported on this device';
 }
 
 if (!token) {
@@ -61,6 +81,23 @@ elements.submitBtn.addEventListener('click', async () => {
 
     if (!fullName || !matricNumber) {
         showMessage('Please provide both your Full Name and Matric Number.', 'error');
+        return;
+    }
+
+    // Check if GPS is required and acquired
+    if (gpsPermissionDenied) {
+        showMessage('Location permission is required. Please allow location access in browser settings.', 'error');
+        return;
+    }
+
+    // Wait for GPS if still acquiring
+    if (!gpsAquired && navigator.geolocation) {
+        showMessage('Still acquiring location... Please wait a few seconds.', 'warning');
+        return;
+    }
+
+    if (!studentGps && navigator.geolocation) {
+        showMessage('Location not available. Please check your GPS/browser settings.', 'error');
         return;
     }
 
