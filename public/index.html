@@ -21,9 +21,18 @@
                 <input type="text" id="className" placeholder="Enter Class Title" style="margin-bottom: 16px;">
                 
                 <label for="classLevel" style="display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 0.9rem;">Course Level (e.g. 200)</label>
-                <input type="text" id="classLevel" placeholder="Enter Level" style="margin-bottom: 24px;">
+                <input type="text" id="classLevel" placeholder="Enter Level" style="margin-bottom: 16px;">
                 
-                <button id="startBtn" class="btn-primary" style="width: 100%;">Create & Start Session</button>
+                <label for="gpsRadiusInput" style="display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 0.9rem;">GPS Radius (meters, optional)</label>
+                <input type="number" id="gpsRadiusInput" placeholder="Default: 50" min="10" max="500" style="margin-bottom: 24px;">
+                
+                <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                    <button id="startBtn" class="btn-primary" style="flex: 1;">Create & Start Session</button>
+                    <button id="useGpsCheckbox" class="btn-secondary" style="flex: 1; background: rgba(255,255,255,0.1);">✓ Enable GPS Tracking</button>
+                </div>
+                <div id="gpsStatusSetup" style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; font-size: 0.8rem; color: var(--text-dim); text-align: center; display: none;">
+                    <span id="gpsSetupStatus">Detecting location...</span>
+                </div>
             </div>
             <div id="setupError" class="message error" style="display: none; margin-top: 16px;"></div>
         </section>
@@ -36,6 +45,17 @@
                     <p id="displayClassLevel" style="color: var(--text-dim); font-size: 1.1rem; margin-top: 4px;">Level</p>
                 </div>
                 <button id="endBtn" class="btn-danger">End Session</button>
+            </div>
+
+            <!-- GPS Status Badge (if enabled) -->
+            <div id="gpsInfoDiv" style="background: rgba(106, 168, 254, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 16px; border-left: 3px solid #6ea8fe; display: none;">
+                <div style="font-size: 0.85rem; margin-bottom: 6px;">
+                    <span style="font-weight: 600; color: var(--primary);">📍 GPS Tracking Active</span>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-dim);">
+                    <div>Radius: <span id="displayGpsRadius" style="color: var(--primary);">50m</span></div>
+                    <div id="displayGpsCoords" style="margin-top: 4px;"></div>
+                </div>
             </div>
 
             <div id="qrArea" class="qr-container" style="display: block; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 16px;">

@@ -16,9 +16,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- In-Memory Data Storage ---
 let classes = [];     // { id, class_name, level, created_at }
-let sessions = [];    // { id, class_id, class_name, level, status, created_at }
-let attendance = [];  // { id, session_id, class_id, name, matric_number, department, timestamp }
+let sessions = [];    // { id, class_id, class_name, level, status, created_at, lecturerGps, gpsRadius }
+let attendance = [];  // { id, session_id, class_id, name, matric_number, department, timestamp, studentGps, deviceId }
 let attendanceIdCounter = 1;
+let deviceSessions = {}; // Track device-session combinations for duplicate prevention
 
 // Helper to determine department from matric correctly (embedded format)
 function getDepartment(matricNo) {
@@ -42,11 +43,39 @@ function getDepartment(matricNo) {
     return deptMap[deptCode] || 'Other';
 }
 
+// Helper to calculate distance between two GPS coordinates (Haversine formula)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Earth's radius in meters
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in meters
+}
+
+// Helper to validate GPS is within session radius
+function isWithinGpsRadius(studentGps, lecturerGps, radius) {
+    if (!studentGps || !studentGps.latitude || !studentGps.longitude) return false;
+    if (!lecturerGps || !lecturerGps.latitude || !lecturerGps.longitude) return false;
+    
+    const distance = calculateDistance(
+        studentGps.latitude,
+        studentGps.longitude,
+        lecturerGps.latitude,
+        lecturerGps.longitude
+    );
+    
+    return distance <= radius;
+}
+
 // --- API Endpoints ---
 
-// Start a new session
+// Start a new session (with optional GPS capture from lecturer)
 app.post('/api/sessions/start', async (req, res) => {
-    const { className, level } = req.body;
+    const { className, level, lecturerGps, gpsRadius } = req.body;
     if (!className || !level) {
         return res.status(400).json({ error: 'Class name and level are required' });
     }
@@ -73,20 +102,31 @@ app.post('/api/sessions/start', async (req, res) => {
         }
         
         const sessionId = uuidv4();
-        sessions.push({
+        const session = {
             id: sessionId,
             class_id: classId,
             class_name: className,
             level: level,
             status: 'active',
             created_at: new Date().toISOString()
-        });
+        };
+        
+        // Add GPS tracking if provided
+        if (lecturerGps && typeof lecturerGps.latitude === 'number' && typeof lecturerGps.longitude === 'number') {
+            session.lecturerGps = {
+                latitude: lecturerGps.latitude,
+                longitude: lecturerGps.longitude,
+                timestamp: new Date().toISOString()
+            };
+            session.gpsRadius = gpsRadius || 50; // Default 50 meters
+        }
+        
+        sessions.push(session);
         
         const qrUrl = `${BASE_URL}/attend.html?token=${sessionId}`;
-        
         const qrDataUrl = await qrcode.toDataURL(qrUrl);
         
-        res.json({ success: true, sessionId, qrDataUrl, className, level });
+        res.json({ success: true, sessionId, qrDataUrl, className, level, gpsEnabled: !!session.lecturerGps });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -100,25 +140,30 @@ app.post('/api/sessions/end', (req, res) => {
     res.json({ success: true });
 });
 
-// Get active session
+// Get active session (includes GPS info for mobile verification)
 app.get('/api/sessions/active', async (req, res) => {
     try {
         const activeSession = sessions.find(s => s.status === 'active');
         if (activeSession) {
             const qrUrl = `${BASE_URL}/attend.html?token=${activeSession.id}`;
             const qrDataUrl = await qrcode.toDataURL(qrUrl);
-            res.json({ session: activeSession, qrDataUrl });
+            res.json({ 
+                session: activeSession, 
+                qrDataUrl,
+                gpsEnabled: !!activeSession.lecturerGps,
+                gpsRadius: activeSession.gpsRadius || 50
+            });
         } else {
-            res.json({ session: null });
+            res.json({ session: null, gpsEnabled: false });
         }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// Submit attendance
+// Submit attendance with GPS and device validation
 app.post('/api/attendance', (req, res) => {
-    const { name, matricNumber, token } = req.body;
+    const { name, matricNumber, token, studentGps, deviceId } = req.body;
     
     if (!name || !matricNumber || !token) {
         return res.status(400).json({ error: 'Name, matric number, and token are required' });
@@ -129,14 +174,46 @@ app.post('/api/attendance', (req, res) => {
         return res.status(400).json({ error: 'Invalid or inactive session' });
     }
 
+    // Check if matric already submitted (existing logic - KEEP)
     const existing = attendance.find(a => a.session_id === token && a.matric_number === matricNumber);
     if (existing) {
         return res.status(400).json({ error: 'Attendance already submitted for this session by this matric number' });
     }
 
+    // Check if device already submitted (new logic - device-level duplicate protection)
+    if (deviceId) {
+        const deviceKey = `${token}-${deviceId}`;
+        const deviceSubmitted = attendance.find(a => a.session_id === token && a.deviceId === deviceId);
+        if (deviceSubmitted) {
+            return res.status(400).json({ error: 'Attendance already submitted from this device for this session' });
+        }
+    }
+
+    // GPS validation (if session has GPS enabled)
+    if (session.lecturerGps) {
+        if (!studentGps || !studentGps.latitude || !studentGps.longitude) {
+            return res.status(403).json({ error: 'Location permission required' });
+        }
+        
+        const withinRadius = isWithinGpsRadius(studentGps, session.lecturerGps, session.gpsRadius);
+        if (!withinRadius) {
+            const distance = calculateDistance(
+                studentGps.latitude,
+                studentGps.longitude,
+                session.lecturerGps.latitude,
+                session.lecturerGps.longitude
+            );
+            return res.status(403).json({ 
+                error: 'You are not within the class location',
+                distance: Math.round(distance),
+                radius: session.gpsRadius
+            });
+        }
+    }
+
     const department = getDepartment(matricNumber);
 
-    attendance.push({
+    const record = {
         id: attendanceIdCounter++,
         session_id: token,
         class_id: session.class_id,
@@ -144,7 +221,17 @@ app.post('/api/attendance', (req, res) => {
         matric_number: matricNumber,
         department: department,
         timestamp: new Date().toISOString()
-    });
+    };
+    
+    // Attach GPS and device info if provided
+    if (studentGps) {
+        record.studentGps = studentGps;
+    }
+    if (deviceId) {
+        record.deviceId = deviceId;
+    }
+
+    attendance.push(record);
 
     res.json({ success: true, name, department });
 });

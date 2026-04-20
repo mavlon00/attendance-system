@@ -16,6 +16,14 @@
         <main class="card">
             <div id="message" class="message"></div>
 
+            <!-- GPS Permission Status -->
+            <div id="gpsStatusDiv" style="background: rgba(255,255,255,0.05); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.8rem; text-align: center; display: none;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <span id="gpsStatusIcon" style="font-size: 1.2rem;">⏳</span>
+                    <span id="gpsStatusText" style="color: var(--text-dim);">Requesting location...</span>
+                </div>
+            </div>
+
             <div id="formSection">
                 <div class="input-group">
                     <label for="fullName" style="display: block; margin-bottom: 8px; color: var(--text-dim); font-size: 0.9rem;">Full Name</label>

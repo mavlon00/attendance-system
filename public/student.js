@@ -6,11 +6,49 @@ const elements = {
     matricNumber: document.getElementById('matricNumber'),
     message: document.getElementById('message'),
     successName: document.getElementById('successName'),
-    successDept: document.getElementById('successDept')
+    successDept: document.getElementById('successDept'),
+    gpsStatusDiv: document.getElementById('gpsStatusDiv'),
+    gpsStatusIcon: document.getElementById('gpsStatusIcon'),
+    gpsStatusText: document.getElementById('gpsStatusText')
 };
 
 const urlParams = new URLSearchParams(window.location.search);
 const token = urlParams.get('token');
+
+// Device identification for duplicate prevention
+let deviceId = localStorage.getItem('attendanceDeviceId');
+if (!deviceId) {
+    deviceId = `device-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    localStorage.setItem('attendanceDeviceId', deviceId);
+}
+
+let studentGps = null;
+let gpsPermissionDenied = false;
+
+// Request GPS on page load
+if (navigator.geolocation) {
+    elements.gpsStatusDiv.style.display = 'block';
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            studentGps = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                accuracy: position.coords.accuracy
+            };
+            elements.gpsStatusDiv.style.display = 'none';
+        },
+        (error) => {
+            gpsPermissionDenied = true;
+            elements.gpsStatusIcon.innerText = '⚠️';
+            elements.gpsStatusText.innerText = 'Location access denied. You can still sign in if location is optional.';
+            elements.gpsStatusDiv.style.borderLeft = '3px solid var(--accent)';
+            console.warn('GPS Error:', error.message);
+        },
+        { timeout: 10000, enableHighAccuracy: false }
+    );
+} else {
+    console.warn('Geolocation not supported');
+}
 
 if (!token) {
     showMessage('Invalid Session Link. Please scan a valid QR code.', 'error');
@@ -30,10 +68,22 @@ elements.submitBtn.addEventListener('click', async () => {
         elements.submitBtn.disabled = true;
         elements.submitBtn.innerText = 'Submitting...';
 
+        const payload = { 
+            name: fullName, 
+            matricNumber, 
+            token,
+            deviceId 
+        };
+
+        // Include GPS if available
+        if (studentGps) {
+            payload.studentGps = studentGps;
+        }
+
         const res = await fetch('/api/attendance', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: fullName, matricNumber, token })
+            body: JSON.stringify(payload)
         });
 
         const data = await res.json();

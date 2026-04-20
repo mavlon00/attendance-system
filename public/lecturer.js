@@ -1,5 +1,7 @@
 let currentSessionId = null;
 let pollInterval = null;
+let lecturerGps = null;
+let useGpsTracking = false;
 
 const elements = {
     setupSection: document.getElementById('setupSection'),
@@ -7,13 +9,20 @@ const elements = {
     logSection: document.getElementById('logSection'),
     classNameInput: document.getElementById('className'),
     classLevelInput: document.getElementById('classLevel'),
+    gpsRadiusInput: document.getElementById('gpsRadiusInput'),
     setupError: document.getElementById('setupError'),
     startBtn: document.getElementById('startBtn'),
+    useGpsCheckbox: document.getElementById('useGpsCheckbox'),
+    gpsStatusSetup: document.getElementById('gpsStatusSetup'),
+    gpsSetupStatus: document.getElementById('gpsSetupStatus'),
     endBtn: document.getElementById('endBtn'),
     displayClassName: document.getElementById('displayClassName'),
     displayClassLevel: document.getElementById('displayClassLevel'),
     copyBtn: document.getElementById('copyBtn'),
     qrImage: document.getElementById('qrImage'),
+    gpsInfoDiv: document.getElementById('gpsInfoDiv'),
+    displayGpsRadius: document.getElementById('displayGpsRadius'),
+    displayGpsCoords: document.getElementById('displayGpsCoords'),
     studentCount: document.getElementById('studentCount'),
     deptList: document.getElementById('deptList'),
     studentTableBody: document.getElementById('studentTableBody'),
@@ -35,13 +44,53 @@ const elements = {
 
 let selectedClassId = null;
 
+// Request lecturer GPS on page load
+function requestLecturerGps() {
+    if (navigator.geolocation) {
+        elements.gpsStatusSetup.style.display = 'block';
+        elements.gpsSetupStatus.innerText = '📍 Detecting location...';
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                lecturerGps = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy
+                };
+                elements.gpsSetupStatus.innerText = `✓ Location detected (Accuracy: ${Math.round(position.coords.accuracy)}m)`;
+                elements.useGpsCheckbox.style.background = 'rgba(106, 168, 254, 0.3)';
+            },
+            (error) => {
+                elements.gpsSetupStatus.innerText = '✗ Location access denied';
+                console.warn('GPS Error:', error.message);
+            },
+            { timeout: 10000, enableHighAccuracy: false }
+        );
+    } else {
+        elements.gpsSetupStatus.innerText = 'Geolocation not supported';
+    }
+}
+
+// GPS Toggle Button
+elements.useGpsCheckbox.addEventListener('click', () => {
+    if (lecturerGps) {
+        useGpsTracking = !useGpsTracking;
+        elements.useGpsCheckbox.style.background = useGpsTracking ? 'rgba(106, 168, 254, 0.4)' : 'rgba(255,255,255,0.1)';
+        elements.useGpsCheckbox.innerText = useGpsTracking ? '✓✓ GPS Enabled' : '✓ Enable GPS Tracking';
+    } else {
+        alert('Please enable location access first.');
+    }
+});
+
+// Call GPS request on page load
+requestLecturerGps();
+
 // Check for active session on load
 async function checkActiveSession() {
     try {
         const res = await fetch('/api/sessions/active');
         const data = await res.json();
         if (data.session) {
-            setupLiveSession(data.session.id, data.qrDataUrl, data.session.class_name, data.session.level);
+            setupLiveSession(data.session.id, data.qrDataUrl, data.session.class_name, data.session.level, data.gpsEnabled, data.gpsRadius);
         }
         loadHistoryClasses();
     } catch (err) {
@@ -49,13 +98,22 @@ async function checkActiveSession() {
     }
 }
 
-function setupLiveSession(sessionId, qrDataUrl, className, level) {
+function setupLiveSession(sessionId, qrDataUrl, className, level, gpsEnabled, gpsRadius) {
     currentSessionId = sessionId;
 
     // Update UI elements
     elements.displayClassName.innerText = className;
     elements.displayClassLevel.innerText = `Level ${level}`;
     elements.qrImage.src = qrDataUrl;
+
+    // Show GPS info if enabled
+    if (gpsEnabled && lecturerGps) {
+        elements.gpsInfoDiv.style.display = 'block';
+        elements.displayGpsRadius.innerText = `${gpsRadius}m`;
+        elements.displayGpsCoords.innerHTML = `Latitude: ${lecturerGps.latitude.toFixed(6)}<br>Longitude: ${lecturerGps.longitude.toFixed(6)}`;
+    } else {
+        elements.gpsInfoDiv.style.display = 'none';
+    }
 
     // Toggle Visibility
     elements.setupSection.style.display = 'none';
@@ -80,16 +138,25 @@ elements.startBtn.addEventListener('click', async () => {
         elements.startBtn.disabled = true;
         elements.startBtn.innerText = 'Creating...';
 
+        const payload = { className, level };
+        
+        // Add GPS if tracking is enabled
+        if (useGpsTracking && lecturerGps) {
+            payload.lecturerGps = lecturerGps;
+            const radiusValue = parseInt(elements.gpsRadiusInput.value) || 50;
+            payload.gpsRadius = radiusValue;
+        }
+
         const res = await fetch('/api/sessions/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ className, level })
+            body: JSON.stringify(payload)
         });
         const data = await res.json();
 
         if (data.success) {
             elements.setupError.style.display = 'none';
-            setupLiveSession(data.sessionId, data.qrDataUrl, data.className, data.level);
+            setupLiveSession(data.sessionId, data.qrDataUrl, data.className, data.level, data.gpsEnabled, payload.gpsRadius || 50);
         } else {
             elements.setupError.innerText = data.error || "Failed to start session";
             elements.setupError.style.display = 'block';
