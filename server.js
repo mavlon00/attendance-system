@@ -81,10 +81,8 @@ app.post('/api/sessions/start', async (req, res) => {
             created_at: new Date().toISOString()
         });
         
-        // Base URL dynamically adapted to Render protocol or localhost
-        const host = req.get('host');
-        const protocol = req.protocol; 
-        const qrUrl = `${protocol}://${host}/attend.html?token=${sessionId}`;
+        const baseUrl = 'https://attendance-system-1-eusi.onrender.com';
+        const qrUrl = `${baseUrl}/attend.html?token=${sessionId}`;
         
         const qrDataUrl = await qrcode.toDataURL(qrUrl);
         
@@ -107,9 +105,8 @@ app.get('/api/sessions/active', async (req, res) => {
     try {
         const activeSession = sessions.find(s => s.status === 'active');
         if (activeSession) {
-            const host = req.get('host');
-            const protocol = req.protocol;
-            const qrUrl = `${protocol}://${host}/attend.html?token=${activeSession.id}`;
+            const baseUrl = 'https://attendance-system-1-eusi.onrender.com';
+            const qrUrl = `${baseUrl}/attend.html?token=${activeSession.id}`;
             const qrDataUrl = await qrcode.toDataURL(qrUrl);
             res.json({ session: activeSession, qrDataUrl });
         } else {

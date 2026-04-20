@@ -125,7 +125,10 @@ button {
     background: white;
     border-radius: 16px;
     margin-bottom: 16px;
+    width: 100%;
     max-width: 250px;
+    height: auto;
+    display: inline-block;
 }
 
 .status-badge {
@@ -232,4 +235,72 @@ input:focus {
 
 tr {
     animation: fadeIn 0.3s ease forwards;
+}
+
+/* --- Mobile Responsiveness --- */
+@media screen and (max-width: 768px) {
+    .container {
+        width: 95%;
+        margin: 20px auto;
+        padding: 10px;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+
+    .card {
+        padding: 20px;
+    }
+
+    .controls {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .controls button {
+        width: 100%;
+    }
+
+    table, thead, tbody, th, td, tr { 
+        display: block; 
+    }
+
+    thead tr { 
+        position: absolute;
+        top: -9999px;
+        left: -9999px;
+    }
+    
+    tr { 
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        margin-bottom: 16px;
+        background: rgba(255, 255, 255, 0.02);
+    }
+    
+    td { 
+        border: none;
+        border-bottom: 1px solid var(--glass-border); 
+        position: relative;
+        padding-left: 45%; 
+    }
+    
+    td:last-child {
+        border-bottom: 0;
+    }
+
+    td:before { 
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        width: 40%; 
+        padding-right: 10px; 
+        white-space: nowrap;
+        color: var(--text-dim);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        font-weight: 600;
+        content: attr(data-label);
+    }
 }

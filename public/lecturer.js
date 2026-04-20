@@ -51,17 +51,17 @@ async function checkActiveSession() {
 
 function setupLiveSession(sessionId, qrDataUrl, className, level) {
     currentSessionId = sessionId;
-    
+
     // Update UI elements
     elements.displayClassName.innerText = className;
     elements.displayClassLevel.innerText = `Level ${level}`;
     elements.qrImage.src = qrDataUrl;
-    
+
     // Toggle Visibility
     elements.setupSection.style.display = 'none';
     elements.activeSessionSection.style.display = 'block';
     elements.logSection.style.display = 'block';
-    
+
     // Start polling
     startPolling();
 }
@@ -79,14 +79,14 @@ elements.startBtn.addEventListener('click', async () => {
     try {
         elements.startBtn.disabled = true;
         elements.startBtn.innerText = 'Creating...';
-        
-        const res = await fetch('/api/sessions/start', { 
+
+        const res = await fetch('/api/sessions/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ className, level })
         });
         const data = await res.json();
-        
+
         if (data.success) {
             elements.setupError.style.display = 'none';
             setupLiveSession(data.sessionId, data.qrDataUrl, data.className, data.level);
@@ -106,7 +106,7 @@ elements.startBtn.addEventListener('click', async () => {
 
 elements.endBtn.addEventListener('click', async () => {
     if (!confirm("Are you sure you want to end this session?")) return;
-    
+
     try {
         const res = await fetch('/api/sessions/end', { method: 'POST' });
         const data = await res.json();
@@ -116,18 +116,18 @@ elements.endBtn.addEventListener('click', async () => {
             elements.activeSessionSection.style.display = 'none';
             elements.logSection.style.display = 'none';
             elements.setupSection.style.display = 'block';
-            
+
             elements.classNameInput.value = '';
             elements.classLevelInput.value = '';
             elements.startBtn.disabled = false;
             elements.startBtn.innerText = 'Create & Start Session';
-            
+
             elements.studentCount.innerText = '0';
             elements.studentTableBody.innerHTML = '';
             elements.deptList.innerHTML = '<div style="color: var(--text-dim); font-size: 0.9rem; font-style: italic;">Awaiting students...</div>';
-            
+
             currentSessionId = null;
-            
+
             // Reload history to show the newly finished class/session
             loadHistoryClasses();
         }
@@ -139,7 +139,7 @@ elements.endBtn.addEventListener('click', async () => {
 elements.copyBtn.addEventListener('click', () => {
     const sessionId = currentSessionId;
     if (!sessionId) return;
-    const url = `http://localhost:3000/attend.html?token=${sessionId}`;
+    const url = `https://attendance-system-1-eusi.onrender.com/attend.html?token=${sessionId}`;
     navigator.clipboard.writeText(url).then(() => {
         const originalText = elements.copyBtn.innerText;
         elements.copyBtn.innerText = 'Copied!';
@@ -175,7 +175,7 @@ async function updateDashboard() {
     try {
         const res = await fetch(`/api/dashboard/${currentSessionId}`);
         const data = await res.json();
-        
+
         // 1. Update Total Count
         elements.studentCount.innerText = data.count || 0;
 
@@ -194,21 +194,21 @@ async function updateDashboard() {
         }
 
         // 3. Update Student List
-        elements.studentTableBody.innerHTML = data.students && data.students.length > 0 
+        elements.studentTableBody.innerHTML = data.students && data.students.length > 0
             ? data.students.map(s => `
                 <tr>
-                    <td>
+                    <td data-label="Student Info">
                         <div style="font-weight: 600;">${s.name}</div>
                         <div style="font-size: 0.8rem; color: var(--text-dim); font-family: monospace;">${s.matric_number}</div>
                     </td>
-                    <td>
+                    <td data-label="Department">
                         <span style="font-size: 0.85rem; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">${s.department}</span>
                     </td>
-                    <td style="color: var(--text-dim); font-size: 0.9rem;">${new Date(s.timestamp).toLocaleTimeString()}</td>
+                    <td data-label="Check-in Time" style="color: var(--text-dim); font-size: 0.9rem;">${new Date(s.timestamp).toLocaleTimeString()}</td>
                 </tr>
             `).join('')
             : '<tr><td colspan="3" style="text-align: center; color: var(--text-dim); padding: 40px;">No attendance recorded yet.</td></tr>';
-            
+
         elements.lastUpdate.innerText = `Updated ${new Date().toLocaleTimeString()}`;
     } catch (err) {
         console.error('Polling error:', err);
@@ -252,8 +252,8 @@ async function loadHistorySessions(classId, className) {
     try {
         const res = await fetch(`/api/classes/${classId}/sessions`);
         const data = await res.json();
-        
-        elements.historySessionsList.innerHTML = data.sessions.length > 0 
+
+        elements.historySessionsList.innerHTML = data.sessions.length > 0
             ? data.sessions.map(s => `
                 <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 16px; border-radius: 8px;">
                     <div>
@@ -279,7 +279,7 @@ async function loadSessionAttendance(sessionId) {
     elements.historySessionsSection.style.display = 'none';
     elements.historyDetailSection.style.display = 'block';
     elements.historyDetailTitle.innerText = `Session Attendance`;
-    
+
     elements.historyDetailHead.innerHTML = `
         <tr>
             <th style="width: 40%;">Student Info</th>
@@ -292,16 +292,16 @@ async function loadSessionAttendance(sessionId) {
     try {
         const res = await fetch(`/api/sessions/${sessionId}/attendance`);
         const data = await res.json();
-        
+
         elements.historyDetailBody.innerHTML = data.attendance && data.attendance.length > 0
             ? data.attendance.map(a => `
                 <tr>
-                    <td>
+                    <td data-label="Student Info">
                         <div style="font-weight: 600;">${a.name}</div>
                         <div style="font-size: 0.8rem; color: var(--text-dim); font-family: monospace;">${a.matric_number}</div>
                     </td>
-                    <td><span style="font-size: 0.85rem; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">${a.department}</span></td>
-                    <td style="color: var(--text-dim); font-size: 0.9rem;">${new Date(a.timestamp).toLocaleString()}</td>
+                    <td data-label="Department"><span style="font-size: 0.85rem; padding: 4px 8px; background: rgba(255,255,255,0.05); border-radius: 6px;">${a.department}</span></td>
+                    <td data-label="Timestamp" style="color: var(--text-dim); font-size: 0.9rem;">${new Date(a.timestamp).toLocaleString()}</td>
                 </tr>
             `).join('')
             : '<tr><td colspan="3" style="text-align: center; color: var(--text-dim);">No records.</td></tr>';
@@ -328,16 +328,16 @@ elements.viewGradesBtn.addEventListener('click', async () => {
     try {
         const res = await fetch(`/api/classes/${selectedClassId}/grades?max_marks=30`);
         const data = await res.json();
-        
+
         elements.historyDetailBody.innerHTML = data.grades && data.grades.length > 0
             ? data.grades.map(g => `
                 <tr>
-                    <td>
+                    <td data-label="Student Info">
                         <div style="font-weight: 600;">${g.name}</div>
                         <div style="font-size: 0.8rem; color: var(--text-dim); font-family: monospace;">${g.matric_number}</div>
                     </td>
-                    <td style="color: var(--text-dim); font-size: 0.9rem;">${g.sessions_attended} / ${data.totalSessions} sessions</td>
-                    <td><strong style="color: var(--accent); font-size: 1.1rem;">${g.score}</strong></td>
+                    <td data-label="Attendance Rate" style="color: var(--text-dim); font-size: 0.9rem;">${g.sessions_attended} / ${data.totalSessions} sessions</td>
+                    <td data-label="Score (/30)"><strong style="color: var(--accent); font-size: 1.1rem;">${g.score}</strong></td>
                 </tr>
             `).join('')
             : '<tr><td colspan="3" style="text-align: center; color: var(--text-dim);">No records calculated.</td></tr>';
