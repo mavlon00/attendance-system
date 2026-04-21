@@ -45,30 +45,85 @@ function getDepartment(matricNo) {
 
 // Helper to calculate distance between two GPS coordinates (Haversine formula)
 function calculateDistance(lat1, lon1, lat2, lon2) {
+    // Ensure all values are numbers
+    lat1 = Number(lat1);
+    lon1 = Number(lon1);
+    lat2 = Number(lat2);
+    lon2 = Number(lon2);
+    
+    // Validate inputs
+    if (isNaN(lat1) || isNaN(lon1) || isNaN(lat2) || isNaN(lon2)) {
+        console.error('❌ Invalid coordinates for distance calculation:', { lat1, lon1, lat2, lon2 });
+        return Infinity;
+    }
+    
     const R = 6371000; // Earth's radius in meters
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    // Convert degrees to radians
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    
+    // Haversine formula
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Distance in meters
+    const distance = R * c;
+    
+    console.log(`📍 Distance calculation: (${lat1}, ${lon1}) → (${lat2}, ${lon2}) = ${distance.toFixed(2)}m`);
+    return distance;
 }
 
 // Helper to validate GPS is within session radius
 function isWithinGpsRadius(studentGps, lecturerGps, radius) {
-    if (!studentGps || !studentGps.latitude || !studentGps.longitude) return false;
-    if (!lecturerGps || !lecturerGps.latitude || !lecturerGps.longitude) return false;
+    console.log('\n=== GPS VALIDATION START ===');
+    console.log('📌 Lecturer GPS:', lecturerGps);
+    console.log('📱 Student GPS:', studentGps);
+    console.log('⭕ Radius requirement:', radius, 'meters');
     
-    const distance = calculateDistance(
-        studentGps.latitude,
-        studentGps.longitude,
-        lecturerGps.latitude,
-        lecturerGps.longitude
-    );
+    // Validate student GPS
+    if (!studentGps) {
+        console.error('❌ Student GPS is null/undefined');
+        return false;
+    }
     
-    return distance <= radius;
+    const studentLat = Number(studentGps.latitude);
+    const studentLng = Number(studentGps.longitude);
+    
+    if (isNaN(studentLat) || isNaN(studentLng)) {
+        console.error('❌ Student GPS has invalid coordinates:', { 
+            lat: studentGps.latitude, 
+            lng: studentGps.longitude 
+        });
+        return false;
+    }
+    
+    // Validate lecturer GPS
+    if (!lecturerGps) {
+        console.error('❌ Lecturer GPS is null/undefined');
+        return false;
+    }
+    
+    const lecturerLat = Number(lecturerGps.latitude);
+    const lecturerLng = Number(lecturerGps.longitude);
+    
+    if (isNaN(lecturerLat) || isNaN(lecturerLng)) {
+        console.error('❌ Lecturer GPS has invalid coordinates:', { 
+            lat: lecturerGps.latitude, 
+            lng: lecturerGps.longitude 
+        });
+        return false;
+    }
+    
+    const distance = calculateDistance(lecturerLat, lecturerLng, studentLat, studentLng);
+    const isWithin = distance <= radius;
+    
+    console.log(`\n📊 Result: Distance ${distance.toFixed(2)}m vs Radius ${radius}m = ${isWithin ? '✅ PASS' : '❌ FAIL'}`);
+    console.log('=== GPS VALIDATION END ===\n');
+    
+    return isWithin;
 }
 
 // --- API Endpoints ---
@@ -118,7 +173,7 @@ app.post('/api/sessions/start', async (req, res) => {
                 longitude: lecturerGps.longitude,
                 timestamp: new Date().toISOString()
             };
-            session.gpsRadius = gpsRadius || 50; // Default 50 meters
+            session.gpsRadius = gpsRadius || 100; // Default 100 meters (generous for real-world GPS accuracy)
         }
         
         sessions.push(session);
@@ -159,7 +214,7 @@ app.get('/api/sessions/active', async (req, res) => {
                 session: activeSession, 
                 qrDataUrl,
                 gpsEnabled: !!activeSession.lecturerGps,
-                gpsRadius: activeSession.gpsRadius || 50
+                gpsRadius: activeSession.gpsRadius || 100
             });
         } else {
             res.json({ session: null, gpsEnabled: false });
@@ -171,71 +226,137 @@ app.get('/api/sessions/active', async (req, res) => {
 
 // Submit attendance with GPS and device validation
 app.post('/api/attendance', (req, res) => {
+    console.log('\n\n╔══ ATTENDANCE SUBMISSION ══╗');
+    console.log('📋 Raw Request Body:', JSON.stringify(req.body, null, 2));
+    
     const { name, matricNumber, token, studentGps, deviceId } = req.body;
     
-    console.log('Attendance submission attempt:', {
-        name,
-        matricNumber,
-        token: token?.substring(0, 8) + '...',
-        studentGps: studentGps ? `${studentGps.latitude}, ${studentGps.longitude}` : null,
-        deviceId: deviceId?.substring(0, 10) + '...'
-    });
+    // Step 1: Validate required fields
+    console.log('\n📍 STEP 1: Field Validation');
+    console.log('  Name:', name || '❌ MISSING');
+    console.log('  Matric:', matricNumber || '❌ MISSING');
+    console.log('  Token:', token ? token.substring(0, 8) + '...' : '❌ MISSING');
+    console.log('  Device ID:', deviceId || '⚠️  not provided');
     
     if (!name || !matricNumber || !token) {
+        console.error('❌ Missing required fields');
         return res.status(400).json({ error: 'Name, matric number, and token are required' });
     }
 
+    // Step 2: Validate session exists and is active
+    console.log('\n📍 STEP 2: Session Validation');
     const session = sessions.find(s => s.id === token && s.status === 'active');
     if (!session) {
+        console.error('❌ Session not found or inactive:', token);
         return res.status(400).json({ error: 'Invalid or inactive session' });
     }
+    console.log('✅ Session found:', session.id);
+    console.log('   GPS Enabled:', !!session.lecturerGps);
+    console.log('   Lecturer Location:', session.lecturerGps? `${session.lecturerGps.latitude}, ${session.lecturerGps.longitude}` : 'N/A');
+    console.log('   Radius:', session.gpsRadius || 'N/A');
 
-    // Check if matric already submitted (existing logic - KEEP)
+    // Step 3: Check matric duplicate
+    console.log('\n📍 STEP 3: Matric Duplicate Check');
     const existing = attendance.find(a => a.session_id === token && a.matric_number === matricNumber);
     if (existing) {
+        console.error('❌ Duplicate matric submission:', matricNumber);
         return res.status(400).json({ error: 'Attendance already submitted for this session by this matric number' });
     }
+    console.log('✅ Matric not yet submitted');
 
-    // Check if device already submitted (new logic - device-level duplicate protection)
+    // Step 4: Check device duplicate
+    console.log('\n📍 STEP 4: Device Duplicate Check');
     if (deviceId) {
-        const deviceKey = `${token}-${deviceId}`;
         const deviceSubmitted = attendance.find(a => a.session_id === token && a.deviceId === deviceId);
         if (deviceSubmitted) {
+            console.error('❌ Device already submitted:', deviceId);
             return res.status(400).json({ error: 'Attendance already submitted from this device for this session' });
         }
+        console.log('✅ Device not yet submitted');
+    } else {
+        console.warn('⚠️  No device ID provided');
     }
 
-    // GPS validation (if session has GPS enabled)
+    // Step 5: GPS Validation (if session has GPS enabled)
+    console.log('\n📍 STEP 5: GPS Validation');
     if (session.lecturerGps) {
-        console.log('GPS validation required. Session GPS:', session.lecturerGps, 'Radius:', session.gpsRadius);
+        console.log('🔒 GPS validation is REQUIRED for this session');
         
-        if (!studentGps || !studentGps.latitude || !studentGps.longitude) {
-            console.log('✗ Student GPS missing:', studentGps);
+        // Validate student GPS data
+        console.log('\n  5a. Student GPS Data Check:');
+        console.log('      Raw studentGps:', studentGps);
+        
+        if (!studentGps) {
+            console.error('  ❌ Student GPS is NULL');
             return res.status(403).json({ error: 'Location permission required' });
         }
         
-        console.log('Student GPS received:', studentGps);
+        if (!studentGps.latitude || !studentGps.longitude) {
+            console.error('  ❌ Student GPS missing lat/lon:', studentGps);
+            return res.status(403).json({ error: 'Location permission required' });
+        }
         
-        const withinRadius = isWithinGpsRadius(studentGps, session.lecturerGps, session.gpsRadius);
-        console.log('GPS within radius?', withinRadius);
+        // Convert to numbers and validate
+        const studentLat = Number(studentGps.latitude);
+        const studentLng = Number(studentGps.longitude);
+        
+        console.log(`      Student Latitude: ${studentGps.latitude} → ${studentLat} (type: ${typeof studentLat})`);
+        console.log(`      Student Longitude: ${studentGps.longitude} → ${studentLng} (type: ${typeof studentLng})`);
+        
+        if (isNaN(studentLat) || isNaN(studentLng)) {
+            console.error('  ❌ Student GPS coordinates are not valid numbers');
+            return res.status(403).json({ error: 'Invalid location data' });
+        }
+        
+        console.log('  ✅ Student GPS data is valid');
+        
+        // Validate lecturer GPS data
+        console.log('\n  5b. Lecturer GPS Data Check:');
+        console.log('      Raw lecturerGps:', session.lecturerGps);
+        
+        const lecturerLat = Number(session.lecturerGps.latitude);
+        const lecturerLng = Number(session.lecturerGps.longitude);
+        
+        console.log(`      Lecturer Latitude: ${session.lecturerGps.latitude} → ${lecturerLat} (type: ${typeof lecturerLat})`);
+        console.log(`      Lecturer Longitude: ${session.lecturerGps.longitude} → ${lecturerLng} (type: ${typeof lecturerLng})`);
+        
+        if (isNaN(lecturerLat) || isNaN(lecturerLng)) {
+            console.error('  ❌ Lecturer GPS coordinates are not valid numbers');
+            return res.status(500).json({ error: 'Server GPS configuration error' });
+        }
+        
+        console.log('  ✅ Lecturer GPS data is valid');
+        
+        // Calculate distance
+        console.log('\n  5c. Distance Calculation:');
+        const distance = calculateDistance(lecturerLat, lecturerLng, studentLat, studentLng);
+        console.log(`      Distance: ${distance.toFixed(2)} meters`);
+        console.log(`      Allowed Radius: ${session.gpsRadius} meters`);
+        
+        const withinRadius = distance <= session.gpsRadius;
+        console.log(`      Result: ${withinRadius ? '✅ WITHIN RADIUS' : '❌ OUTSIDE RADIUS'}`);
         
         if (!withinRadius) {
-            const distance = calculateDistance(
-                studentGps.latitude,
-                studentGps.longitude,
-                session.lecturerGps.latitude,
-                session.lecturerGps.longitude
-            );
-            console.log(`✗ Student outside radius: ${Math.round(distance)}m (radius: ${session.gpsRadius}m)`);
+            console.error(`❌ GPS validation failed. Student is ${distance.toFixed(2)}m away (radius: ${session.gpsRadius}m)`);
             return res.status(403).json({ 
                 error: 'You are not within the class location',
+                debug: {
+                    studentLocation: [studentLat, studentLng],
+                    lecturerLocation: [lecturerLat, lecturerLng],
+                    distance: Math.round(distance),
+                    radius: session.gpsRadius
+                },
                 distance: Math.round(distance),
                 radius: session.gpsRadius
             });
         }
-        console.log('✓ GPS validation passed');
+        console.log('✅ GPS validation PASSED');
+    } else {
+        console.log('⚠️  GPS validation is NOT required for this session');
     }
 
+    // Step 6: Create attendance record
+    console.log('\n📍 STEP 6: Creating Attendance Record');
     const department = getDepartment(matricNumber);
 
     const record = {
@@ -248,7 +369,6 @@ app.post('/api/attendance', (req, res) => {
         timestamp: new Date().toISOString()
     };
     
-    // Attach GPS and device info if provided
     if (studentGps) {
         record.studentGps = studentGps;
     }
@@ -257,9 +377,91 @@ app.post('/api/attendance', (req, res) => {
     }
 
     attendance.push(record);
-    console.log('✓ Attendance recorded for:', name, matricNumber);
+    console.log('✅ Attendance recorded:', record.id);
+    console.log('   Name:', record.name);
+    console.log('   Matric:', record.matric_number);
+    console.log('   Department:', record.department);
+    console.log('   Time:', record.timestamp);
+    console.log('╚════════════════════════╝\n');
 
     res.json({ success: true, name, department });
+});
+
+// DEBUG ENDPOINT: Test GPS validation without enforcing restriction
+app.post('/api/debug/gps-check', (req, res) => {
+    console.log('\n\n╔══ GPS DEBUG CHECK ══╗');
+    const { token, studentGps } = req.body;
+    
+    console.log('📋 Debug GPS Check Request');
+    console.log('   Token:', token ? token.substring(0, 8) + '...' : 'MISSING');
+    console.log('   Student GPS:', studentGps);
+    
+    // Find session
+    const session = sessions.find(s => s.id === token && s.status === 'active');
+    if (!session) {
+        console.error('❌ Session not found');
+        return res.status(400).json({ error: 'Session not found' });
+    }
+    
+    console.log('✅ Session found');
+    console.log('   Lecturer GPS:', session.lecturerGps);
+    console.log('   Radius:', session.gpsRadius);
+    
+    // Check if GPS is enabled
+    if (!session.lecturerGps) {
+        console.log('⚠️  GPS not enabled for this session');
+        return res.json({ 
+            gpsEnabled: false,
+            message: 'GPS validation is not enabled for this session'
+        });
+    }
+    
+    // Validate student GPS
+    if (!studentGps) {
+        console.error('❌ Student GPS is null');
+        return res.json({ 
+            gpsEnabled: true,
+            studentGpsValid: false,
+            error: 'Student GPS is missing'
+        });
+    }
+    
+    const studentLat = Number(studentGps.latitude);
+    const studentLng = Number(studentGps.longitude);
+    
+    if (isNaN(studentLat) || isNaN(studentLng)) {
+        console.error('❌ Student GPS has invalid numbers');
+        return res.json({
+            gpsEnabled: true,
+            studentGpsValid: false,
+            error: 'Student GPS coordinates are not valid numbers',
+            received: studentGps
+        });
+    }
+    
+    // Calculate distance
+    const distance = calculateDistance(
+        Number(session.lecturerGps.latitude),
+        Number(session.lecturerGps.longitude),
+        studentLat,
+        studentLng
+    );
+    
+    const withinRadius = distance <= session.gpsRadius;
+    
+    console.log(`\n📊 Result: ${distance.toFixed(2)}m vs ${session.gpsRadius}m = ${withinRadius ? '✅ PASS' : '❌ FAIL'}`);
+    console.log('╚═══════════════════╝\n');
+    
+    res.json({
+        gpsEnabled: true,
+        studentGpsValid: true,
+        studentLocation: [studentLat, studentLng],
+        lecturerLocation: [Number(session.lecturerGps.latitude), Number(session.lecturerGps.longitude)],
+        distance: Math.round(distance),
+        radius: session.gpsRadius,
+        withinRadius: withinRadius,
+        message: withinRadius ? '✅ Student is within the classroom range' : `❌ Student is ${Math.round(distance)}m away (outside ${session.gpsRadius}m radius)`
+    });
 });
 
 // Get dashboard summary for active session
